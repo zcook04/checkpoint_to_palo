@@ -1,15 +1,12 @@
 ## Takes CHECKPOINT objects and converts them into Palo Objects as set config
 
-## CURRENT PROBLEM WITH SCRIPT
-## -------------------------------------------------------------------------------
-## DOES NOT CONVERT THE PROTOCOL FOR SERVICE OBJECTS.  EVERYHING IS SET TO TCP AND
-## NEEDS TO BE MANUALLY CHANGED.
-
 import re
 import pandas as pd
 import numpy as np
 
 FILENAME = "./preconverted/checkpoint_objects.csv"
+TCP_OBJECTS = "./preconverted/tcp_objects.csv"
+UDP_OBJECTS = "./preconverted/udp_objects.csv"
 
 #REGEX CURRENTLY NOT USED.  HERE IN CASE REQUIRED LATER.
 IPV4_REGEX = r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
@@ -44,13 +41,16 @@ class Objects():
                 '255.0.0.0': '/8',
             }
         self.df = pd.read_csv(FILENAME)
+        self.udp_df = pd.read_csv(UDP_OBJECTS)
+        self.tcp_df = pd.read_csv(TCP_OBJECTS)
 
 class NetworkObjects(Objects):
     def __init__(self):
         super().__init__(FILENAME=FILENAME)
         self.host_objects = self.get_host_objects()
         self.network_objects = self.get_network_objects()
-        self.port_objects = self.get_port_objects()
+        self.tcp_objects = self.get_tcp_objects()
+        self.udp_objects = self.get_udp_objects()
     
     def get_host_objects(self):
         network_df = self.filter_nan(self.df, 'IPv4', False)
@@ -62,9 +62,13 @@ class NetworkObjects(Objects):
         filtered_network_df = self.filter_nan(network_df, 'Mask', False)
         return filtered_network_df[['Name', 'IPv4', 'Mask']]
 
-    def get_port_objects(self):
-        port_df = self.filter_nan(self.df, 'Port', False)
-        return port_df[['Name', 'Port']]
+    def get_tcp_objects(self):
+        tcp_df = self.filter_nan(self.tcp_df, 'Port', False)
+        return tcp_df[['Name', 'Port']]
+
+    def get_udp_objects(self):
+        udp_df = self.filter_nan(self.udp_df, 'Port', False)
+        return udp_df[['Name', 'Port']]
 
     def replace_whitespace(self, text):
         '''
@@ -93,7 +97,7 @@ class NetworkObjects(Objects):
         data = data_frame
         has_value = []
         for value in data_frame[column]:
-            if value == '' or pd.isnull(value):
+            if value == '' or pd.isnull(value) or value == 'N/A':
                 #IF Blank/NaN and you don't want NaN then append false.  If value then append true
                 if want_nan:
                     has_value.append(True)
@@ -152,23 +156,38 @@ class NetworkObjects(Objects):
             with open(CONVERTED_FILENAME, 'a') as f:
                 f.write(f'set address {name} ip-netmask {address}{cidr}\n')
 
-    ## !!! IMPORTANT PLEASE READ
-    ## CURRENTLY DOES NOT CONVERT PROTOCOL INFORMATION
-    def convert_port_objects(self):
-        CONVERTED_FILENAME = './converted/palo_port_objects.txt'
+    def convert_service_objects(self, protocol):
+        '''
+        For this function to work a CSV with a name and port column must live in ./preconverted/
+        named {protocol}_objects.csv
+
+        You pass which protocol you need converted.  From the checkpoint I exported only the specific 
+        protocol as exporting them as a mass list did not include protocol information.
+
+        This function takes one argument.  And uses the instanced df inhereted from Objects class.
+        protocol: string
+        '''
+        CONVERTED_FILENAME = f'./converted/palo_{protocol}_objects.txt'
         with open(CONVERTED_FILENAME, 'w') as f:
-            f.write('------------------------------Converted Port Objects ---------------------------\n\n')
-        with open('./review/port_object_errors.txt', 'w') as f:
-            f.write('------------------------------Port Object Errors ------------------------------\n\n')
-        
-        for index, row in self.port_objects.iterrows():
-            name = self.replace_whitespace(row['Name'])
-            port = row['Port']
-            protocol = 'tcp' ##NEED TO FIND A WAY TO PULL PROTOCOL FROM OUTPUT
+            f.write(f'-----------------------Converted {protocol} Objects ---------------------------\n\n')
+        with open('./review/tcp_object_errors.txt', 'w') as f:
+            f.write(f'-----------------------NETWORK {protocol} ERRORS -----------------------------\n\n')
 
-            with open(CONVERTED_FILENAME, 'a') as f:
-                f.write(f'set service {name} protocol {protocol} port {port}\n')
+        if protocol == 'tcp':
+            for index, row in self.tcp_objects.iterrows():
+                name = self.replace_whitespace(row['Name'])
+                port = row['Port']
+                
+                with open(CONVERTED_FILENAME, 'a') as f:
+                    f.write(f'set service {name} protocol {protocol} port {port}\n')
 
+        if protocol == 'udp':
+            for index, row in self.udp_objects.iterrows():
+                name = self.replace_whitespace(row['Name'])
+                port = row['Port']
+                
+                with open(CONVERTED_FILENAME, 'a') as f:
+                    f.write(f'set service {name} protocol {protocol} port {port}\n')
 
 
 ## Begin Execution Of Main Script
@@ -176,4 +195,5 @@ if __name__ == '__main__':
     net_objs = NetworkObjects()
     net_objs.convert_host_objects()
     net_objs.convert_network_objects()
-    net_objs.convert_port_objects() #Currently does not convert protocol.  Everything set to tcp.
+    net_objs.convert_service_objects('tcp')
+    net_objs.convert_service_objects('udp')
