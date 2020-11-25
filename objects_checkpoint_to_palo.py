@@ -1,5 +1,10 @@
 ## Takes CHECKPOINT objects and converts them into Palo Objects as set config
 
+## CURRENT PROBLEM WITH SCRIPT
+## -------------------------------------------------------------------------------
+## DOES NOT CONVERT THE PROTOCOL FOR SERVICE OBJECTS.  EVERYHING IS SET TO TCP AND
+## NEEDS TO BE MANUALLY CHANGED.
+
 import re
 import pandas as pd
 import numpy as np
@@ -61,8 +66,17 @@ class NetworkObjects(Objects):
         port_df = self.filter_nan(self.df, 'Port', False)
         return port_df[['Name', 'Port']]
 
-    def remove_whitespace(self, text):
-        return text.replace(" ", "_")
+    def replace_whitespace(self, text):
+        '''
+        First strips any white space from the beginning and end of the string then replaces
+        any spaces with _ 
+        
+        Used to format object names correctly.
+
+        Takes one argument
+        text: string
+        '''
+        return text.strip().replace(" ", "_")
 
     def filter_nan(self, data_frame, column, want_nan):
         '''Filters Pandas Data Frame on a specific column depending on whether the value is NaN.
@@ -125,7 +139,7 @@ class NetworkObjects(Objects):
             f.write('-----------------------NETWORK OBJECT ERRORS -----------------------------\n\n')
 
         for index, row in self.network_objects.iterrows():
-            name = self.remove_whitespace(row['Name'])
+            name = self.replace_whitespace(row['Name'])
             address = row['IPv4']
             cidr = self.convert_cidr(row['Mask'])
 
@@ -148,7 +162,7 @@ class NetworkObjects(Objects):
             f.write('------------------------------Port Object Errors ------------------------------\n\n')
         
         for index, row in self.port_objects.iterrows():
-            name = self.remove_whitespace(row['Name'])
+            name = self.replace_whitespace(row['Name'])
             port = row['Port']
             protocol = 'tcp' ##NEED TO FIND A WAY TO PULL PROTOCOL FROM OUTPUT
 
